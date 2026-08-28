@@ -136,4 +136,32 @@
 #include "cpython/pyfpe.h"
 #include "cpython/tracemalloc.h"
 
+#define ENABLE_INSTR    1
+#define ENABLE_GT		1
+#define ENABLE_IBPB     0
+
+#define INSTR_POW_BASE_SHORT                1 << 8
+#define INSTR_POW_COND_SHORT                2 << 8
+#define INSTR_POW_ZERO                      3 << 8
+#define INSTR_POW_WINDOW					4 << 8
+#define INSTR_POW_WINDOW_REST		        5 << 8
+#define INSTR_POW_TRAILING					6 << 8
+#define INSTR_POW_TRAILING_REST				7 << 8
+
+#if ENABLE_INSTR
+PyAPI_DATA(void) *python_opcode_targets[256];
+PyAPI_DATA(void) *python_language_feature_targets[7];
+#endif
+
+#if ENABLE_GT
+inline __attribute__((always_inline)) uint64_t python_rdtscp(void) {
+	uint64_t low, high;
+	__asm__ volatile("rdtscp" : "=a"(low), "=d"(high) : : "rbx", "rcx");
+	return ((high << 32) | low);
+}
+
+PyAPI_DATA(uint64_t) python_opcode_log[1<<16][3];
+PyAPI_DATA(uint16_t) python_opcode_log_ctr;
+#endif
+
 #endif /* !Py_PYTHON_H */

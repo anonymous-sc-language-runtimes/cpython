@@ -505,6 +505,11 @@
             PyObject *res;
             right = stack_pointer[-1];
             left = stack_pointer[-2];
+            #if ENABLE_GT
+            python_opcode_log[python_opcode_log_ctr][0] = python_rdtscp();
+            python_opcode_log[python_opcode_log_ctr][1] = BINARY_OP_SUBTRACT_INT;
+            python_opcode_log[python_opcode_log_ctr++][2] = 0;
+            #endif
             STAT_INC(BINARY_OP, hit);
             res = _PyLong_Subtract((PyLongObject *)left, (PyLongObject *)right);
             _Py_DECREF_SPECIALIZED(right, (destructor)PyObject_Free);
@@ -2309,6 +2314,11 @@
             oparg = CURRENT_OPARG();
             right = stack_pointer[-1];
             left = stack_pointer[-2];
+            #if ENABLE_GT
+            python_opcode_log[python_opcode_log_ctr][0] = python_rdtscp();
+            python_opcode_log[python_opcode_log_ctr][1] = COMPARE_OP_INT;
+            python_opcode_log[python_opcode_log_ctr++][2] = oparg >> 5;
+            #endif
             if (!_PyLong_IsCompact((PyLongObject *)left)) {
                 UOP_STAT_INC(uopcode, miss);
                 JUMP_TO_JUMP_TARGET();

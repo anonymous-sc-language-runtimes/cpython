@@ -4877,6 +4877,38 @@ long_invmod(PyLongObject *a, PyLongObject *n)
     return NULL;
 }
 
+#if ENABLE_INSTR
+extern void *base_case_short, *cond_case_short, *consume_zero, *absorb_window, *absorb_rest, *absorb_trailing_window, *absorb_trailing_rest;
+void *python_language_feature_targets[7] = {
+	&base_case_short,
+	&cond_case_short,
+	&consume_zero,
+	&absorb_window,
+	&absorb_rest,
+	&absorb_trailing_window,
+	&absorb_trailing_rest
+};
+#endif
+
+#if ENABLE_INSTR
+    #define INSTR(prefix, suffix) __asm(#prefix "_" #suffix ":")
+#else
+    #define INSTR(prefix, suffix)
+#endif
+
+#if ENABLE_GT
+	#define GT(instr)  do { 												\
+        	python_opcode_log[python_opcode_log_ctr][0] = python_rdtscp(); 	\
+        	python_opcode_log[python_opcode_log_ctr][1] = instr; 			\
+        	python_opcode_log[python_opcode_log_ctr++][2] = instr;			\
+		} while (0)
+#else
+    #define GT(instr)
+#endif
+
+#define INSTRUMENT(prefix, suffix, instr) 	\
+	INSTR(prefix, suffix); 					\
+	GT(instr)
 
 /* pow(v, w, x) */
 static PyObject *
@@ -5066,8 +5098,10 @@ long_pow(PyObject *v, PyObject *w, PyObject *x)
         }
         for (--i, bit >>= 1;;) {
             for (; bit != 0; bit >>= 1) {
+				INSTRUMENT(base, case_short, INSTR_POW_BASE_SHORT);
                 MULT(z, z, z);
                 if (bi & bit) {
+					INSTRUMENT(cond, case_short, INSTR_POW_COND_SHORT);
                     MULT(z, a, z);
                 }
             }
@@ -5098,7 +5132,8 @@ long_pow(PyObject *v, PyObject *w, PyObject *x)
          * length of `pending` is `blen`.
          */
         int pending = 0, blen = 0;
-#define ABSORB_PENDING  do { \
+
+#define ABSORB_PENDING(suffix, window_instr, trailing_instr) do { \
             int ntz = 0; /* number of trailing zeroes in `pending` */ \
             assert(pending && blen); \
             assert(pending >> (blen - 1)); \
@@ -5110,11 +5145,14 @@ long_pow(PyObject *v, PyObject *w, PyObject *x)
             assert(ntz < blen); \
             blen -= ntz; \
             do { \
+                INSTRUMENT(absorb, suffix, window_instr); \
                 MULT(z, z, z); \
             } while (--blen); \
             MULT(z, table[pending >> 1], z); \
-            while (ntz-- > 0) \
+            while (ntz-- > 0) {\
+				INSTRUMENT(absorb_trailing, suffix, trailing_instr); \
                 MULT(z, z, z); \
+            } \
             assert(blen == 0); \
             pending = 0; \
         } while(0)
@@ -5127,14 +5165,17 @@ long_pow(PyObject *v, PyObject *w, PyObject *x)
                 if (pending) {
                     ++blen;
                     if (blen == EXP_WINDOW_SIZE)
-                        ABSORB_PENDING;
+                        ABSORB_PENDING(window, INSTR_POW_WINDOW, INSTR_POW_TRAILING);
                 }
-                else /* absorb strings of 0 bits */
+                else /* absorb strings of 0 bits */ {
+					INSTRUMENT(consume, zero, INSTR_POW_ZERO);
                     MULT(z, z, z);
+                }
+
             }
         }
         if (pending)
-            ABSORB_PENDING;
+            ABSORB_PENDING(rest, INSTR_POW_WINDOW_REST, INSTR_POW_TRAILING_REST);
     }
 
     if (negativeOutput && !_PyLong_IsZero(z)) {
@@ -6580,6 +6621,9 @@ static PyNumberMethods long_as_number = {
     0,                          /* nb_inplace_floor_divide */
     0,                          /* nb_inplace_true_divide */
     long_long,                  /* nb_index */
+    0,                          /* nb_matrix_multiply */
+    0,                          /* nb_inplace_matrix_multiply */
+    (binaryfunc)long_sub        /* nb_sub_direct */
 };
 
 PyTypeObject PyLong_Type = {

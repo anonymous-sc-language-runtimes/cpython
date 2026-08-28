@@ -3,6 +3,16 @@
 #define _PY_INTERPRETER
 
 #include "Python.h"
+
+#if ENABLE_INSTR
+void *python_opcode_targets[256];
+binaryfunc python_opcode_binary_op_targets[26];
+uint64_t python_opcode_log[1<<16][3];
+uint16_t python_opcode_log_ctr;
+
+#include <string.h>
+#endif
+
 #include "pycore_abstract.h"      // _PyIndex_Check()
 #include "pycore_backoff.h"
 #include "pycore_call.h"          // _PyObject_CallNoArgs()
@@ -678,6 +688,8 @@ extern void _PyUOpPrint(const _PyUOpInstruction *uop);
  * so consume 3 units of C stack */
 #define PY_EVAL_C_STACK_UNITS 2
 
+#include "opcode_export.h"
+
 PyObject* _Py_HOT_FUNCTION
 _PyEval_EvalFrameDefault(PyThreadState *tstate, _PyInterpreterFrame *frame, int throwflag)
 {
@@ -791,7 +803,7 @@ resume_frame:
      * as happens in the standard instruction prologue.
      */
 #if USE_COMPUTED_GOTOS
-        TARGET_INSTRUMENTED_LINE:
+        TARGET_INSTRUMENTED_LINE: __asm("TARGET_INSTRUMENTED_LINE:");
 #else
         case INSTRUMENTED_LINE:
 #endif
